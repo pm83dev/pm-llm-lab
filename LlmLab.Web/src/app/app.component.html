@@ -1,0 +1,122 @@
+<div class="lab">
+  <header class="lab-header">
+    <h1>🧪 LLM Lab</h1>
+    <p class="subtitle">
+      Laboratorio didattico: osserva ogni passaggio del flusso, dal prompt alla
+      risposta, in tempo reale.
+    </p>
+  </header>
+
+  <section class="prompt-box">
+    <textarea
+      [(ngModel)]="prompt"
+      rows="3"
+      placeholder="Scrivi un prompt per l'agente… (es. 'Che ore sono?') e premi Esegui"
+      [disabled]="running"
+      (keydown.enter)="onKeydown($event)"
+    ></textarea>
+    <div class="prompt-actions">
+      <button
+        class="btn btn-primary"
+        (click)="run()"
+        [disabled]="running || !prompt.trim()"
+      >
+        ▶ Esegui
+      </button>
+      <button class="btn btn-danger" (click)="cancel()" [disabled]="!running">
+        ■ Interrompi
+      </button>
+    </div>
+  </section>
+
+  <div *ngIf="error" class="error-banner">⚠ {{ error }}</div>
+
+  <section class="timeline" *ngIf="steps.length > 0">
+    <div *ngFor="let step of steps" class="step" [ngClass]="step.kind">
+      <div class="step-marker">
+        <span class="marker-icon">{{ markerIcon(step.kind) }}</span>
+      </div>
+      <div class="step-body" (click)="toggleStep(step)">
+        <div class="step-header">
+          <span class="step-title">{{ step.title }}</span>
+          <span class="step-round" *ngIf="step.round">R{{ step.round }}</span>
+          <span class="step-pending" *ngIf="step.isPending">⏳</span>
+          <span class="step-chevron" [class.open]="isExpanded(step)">▸</span>
+        </div>
+
+        <div class="step-detail" *ngIf="step.detail">{{ step.detail }}</div>
+
+        <div class="step-expanded" *ngIf="isExpanded(step)">
+          <div
+            *ngIf="step.kind === 'prompt' && step.promptData"
+            class="prompt-history"
+          >
+            <div
+              *ngFor="let msg of step.promptData!.messages"
+              class="msg"
+              [ngClass]="'msg-' + msg.role"
+            >
+              <div class="msg-role">{{ msg.role }}</div>
+              <div class="msg-content">{{ msg.content }}</div>
+              <div
+                *ngIf="msg.toolCalls && msg.toolCalls.length"
+                class="msg-toolcalls"
+              >
+                <div *ngFor="let tc of msg.toolCalls" class="tc">
+                  <code>{{ tc.functionName }}({{ tc.argumentsJson }})</code>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            *ngIf="step.kind === 'streaming' && step.streamingText"
+            class="streaming-text"
+          >
+            {{ step.streamingText }}
+          </div>
+
+          <div
+            *ngIf="step.kind === 'tool-call' || step.kind === 'tool-exec'"
+            class="tool-block"
+          >
+            <div class="tool-name">{{ step.toolName }}</div>
+            <pre class="tool-args">{{ step.toolArgs }}</pre>
+          </div>
+          <div *ngIf="step.kind === 'tool-result'" class="tool-block">
+            <div class="tool-name" [ngClass]="{ error: step.toolIsError }">
+              {{ step.toolIsError ? "❌ " : "✅ " }}{{ step.toolName }}
+              <span class="tool-duration"
+                >({{ formatMs(step.toolDurationMs) }})</span
+              >
+            </div>
+            <pre class="tool-output" [ngClass]="{ error: step.toolIsError }">{{
+              step.toolOutput
+            }}</pre>
+          </div>
+
+          <div
+            *ngIf="step.kind === 'final-answer' && step.finalContent"
+            class="final-answer"
+          >
+            {{ step.finalContent }}
+          </div>
+
+          <div *ngIf="step.kind === 'run-failed'" class="run-error">
+            <div class="error-title">{{ step.error }}</div>
+            <div class="error-details" *ngIf="step.errorDetails">
+              {{ step.errorDetails }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="empty-state" *ngIf="steps.length === 0 && !running">
+    <p>
+      Inserisci un prompt sopra per iniziare. Ogni passaggio del flusso apparirà
+      qui in tempo reale.
+    </p>
+  </div>
+</div>

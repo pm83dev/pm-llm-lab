@@ -1,0 +1,33 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.DotSettings.user
+TestResults/
+publish/
+
+# Node / Angular
+node_modules/
+.angular/
+dist/
+npm-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Secrets / local config
+appsettings.Local.json
+*.pfx
+.env
+
+# Local workspace index
+.pm_workspace_index.json
