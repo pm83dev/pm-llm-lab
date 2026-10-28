@@ -1,7 +1,10 @@
 using System.Text.Json;
 using LlmLab.Shared;
 using LlmLab.Shared.Core;
+using LlmLab.Shared.Eval;
 using LlmLab.Shared.Models;
+using LlmLab.Shared.Services;
+using LlmLab.Shared.Tools;
 using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -43,6 +46,14 @@ app.MapPost("/api/lab/run", async (
     HttpContext http,
     CancellationToken ct) =>
 {
+    // Validazione del prompt PRIMA di aprire lo stream SSE: se non è valida la
+    // risposta è un semplice JSON 400, non uno stream.
+    if (request is null || string.IsNullOrWhiteSpace(request.Prompt))
+        return Results.BadRequest(new { error = "Il prompt non può essere vuoto o composto solo da spazi." });
+
+    if (request.Prompt.Length > 4000)
+        return Results.BadRequest(new { error = $"Il prompt supera il limite di 4000 caratteri (ricevuti: {request.Prompt.Length})." });
+
     http.Response.Headers["Content-Type"] = "text/event-stream";
     http.Response.Headers["Cache-Control"] = "no-cache";
     http.Response.Headers["Connection"] = "keep-alive";
@@ -53,7 +64,7 @@ app.MapPost("/api/lab/run", async (
 
     try
     {
-        await orchestrator.RunAsync(request.Prompt, sink, ct);
+        await orchestrator.RunAsync(request.Prompt, sink, ct, request.IncludeLogprobs);
     }
     catch (OperationCanceledException)
     {
@@ -66,6 +77,75 @@ app.MapPost("/api/lab/run", async (
     }
 
     await sink.CompleteAsync();
+
+    // Lo stream è già stato scritto direttamente nella risposta: nessun IResult da restituire.
+    return Results.Empty;
+});
+
+// ============================================================================
+// POST /api/lab/eval  ->  Suite di test (eval) del modello, in sequenza.
+// Il client invia { cases: [{ name, prompt, checks }] }; ogni caso viene
+// eseguito con un orchestratore FRESCO (history pulita) e un sink in-memory
+// (niente SSE): gli eventi vengono raccolti per estrarre i tool chiamati.
+// La valutazione dei check è delegata a EvalChecker (classe pura in Shared).
+// ============================================================================
+app.MapPost("/api/lab/eval", async (
+    [FromBody] LabEvalRequest request,
+    IServiceProvider sp,
+    CancellationToken ct) =>
+{
+    if (request is null || request.Cases is null || request.Cases.Count == 0)
+        return Results.BadRequest(new { error = "La suite deve contenere almeno un caso (campo 'cases')." });
+
+    // La logica della suite è in EvalSuiteRunner (Shared), riusata anche da /eval/compare.
+    var runner = new EvalSuiteRunner(
+        sp.GetRequiredService<ILLMClient>(),
+        sp.GetServices<ILocalTool>(),
+        ServiceCollectionExtensions.BuildToolsDefinition());
+
+    var result = await runner.RunSuiteAsync(request.Cases, null, ct);
+    return Results.Ok(result);
+});
+
+// ============================================================================
+// POST /api/lab/eval/compare  ->  Confronto A/B della suite di test.
+// Riceve { cases, configA, configB } (config opzionali: temperature, systemPrompt,
+// maxRounds; se assenti si usano i valori attuali). Esegue la stessa suite una volta
+// per configurazione riusingo EvalSuiteRunner e restituisce { a, b, diff } dove diff
+// è per caso: nome + esito A + esito B + "migliorato"/"peggiorato"/"uguale".
+// ============================================================================
+app.MapPost("/api/lab/eval/compare", async (
+    [FromBody] LabEvalCompareRequest request,
+    IServiceProvider sp,
+    CancellationToken ct) =>
+{
+    if (request is null || request.Cases is null || request.Cases.Count == 0)
+        return Results.BadRequest(new { error = "La suite deve contenere almeno un caso (campo 'cases')." });
+
+    var runner = new EvalSuiteRunner(
+        sp.GetRequiredService<ILLMClient>(),
+        sp.GetServices<ILocalTool>(),
+        ServiceCollectionExtensions.BuildToolsDefinition());
+
+    // Le due configurazioni sono indipendenti: si eseguono in sequenza per non
+    // sovrapporre gli stream sullo stesso client LLM (non thread-safe).
+    var a = await runner.RunSuiteAsync(request.Cases, request.ConfigA, ct);
+    var b = await runner.RunSuiteAsync(request.Cases, request.ConfigB, ct);
+
+    var diff = new List<EvalCompareCaseDiff>();
+    for (var i = 0; i < a.Cases.Count; i++)
+    {
+        var ca = a.Cases[i];
+        var cb = b.Cases[i];
+        string variation;
+        if (cb.Passed && !ca.Passed) variation = "migliorato";
+        else if (ca.Passed && !cb.Passed) variation = "peggiorato";
+        else variation = "uguale";
+
+        diff.Add(new EvalCompareCaseDiff(ca.Name, ca.Passed, cb.Passed, variation));
+    }
+
+    return Results.Ok(new EvalCompareResult(a, b, diff));
 });
 
 // Endpoint di health-check semplice.
@@ -73,7 +153,27 @@ app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
 
 app.Run();
 
-public record LabRunRequest(string Prompt);
+// IncludeLogprobs: se true, il backend chiede al server LLM i logprobs (top-5) e li
+// restituisce come eventi TokenProb. Default false: il flusso resta invariato.
+public record LabRunRequest(string Prompt, bool IncludeLogprobs = false);
+
+// Richiesta della suite di test: lista di casi da eseguire in sequenza.
+public record LabEvalRequest(List<EvalCase> Cases);
+
+// ============================================================================
+// Modelli per il confronto A/B (/api/lab/eval/compare). Le config sono opzionali:
+// i campi null usano i valori attuali (default orchestrator / server LLM).
+// ============================================================================
+public record LabEvalCompareRequest(
+    List<EvalCase> Cases,
+    EvalRunConfig? ConfigA = null,
+    EvalRunConfig? ConfigB = null);
+
+// Esito del confronto per un singolo caso.
+public record EvalCompareCaseDiff(string Name, bool PassedA, bool PassedB, string Variation);
+
+// Risposta completa del confronto: risultati delle due suite + diff per caso.
+public record EvalCompareResult(EvalSuiteResult A, EvalSuiteResult B, List<EvalCompareCaseDiff> Diff);
 
 // ============================================================================
 // SseEventSink: implementazione di IEventSink che scrive gli eventi nel flusso

@@ -16,6 +16,10 @@
       (keydown.enter)="onKeydown($event)"
     ></textarea>
     <div class="prompt-actions">
+      <label class="prob-toggle">
+        <input type="checkbox" [(ngModel)]="showProbabilities" [disabled]="running" />
+        Mostra probabilità token
+      </label>
       <button
         class="btn btn-primary"
         (click)="run()"
@@ -45,6 +49,34 @@
         </div>
 
         <div class="step-detail" *ngIf="step.detail">{{ step.detail }}</div>
+
+        <!-- Anatomia del contesto: barra divisa per ruolo + legenda, sempre visibile
+             sullo step 'prompt' (non serve espandere lo step). -->
+        <div
+          *ngIf="step.kind === 'prompt' && anatomySegments(step).length"
+          class="context-anatomy"
+        >
+          <div class="anatomy-title">🧬 Anatomia del contesto</div>
+          <div class="anatomy-bar">
+            <div
+              *ngFor="let seg of anatomySegments(step)"
+              class="anatomy-seg"
+              [style.width.%]="seg.percent"
+              [style.background]="roleColor(seg.role)"
+              [title]="seg.role + ': ~' + seg.tokens + ' token'"
+            ></div>
+          </div>
+          <div class="anatomy-legend">
+            <span *ngFor="let seg of anatomySegments(step)" class="legend-item">
+              <span class="legend-swatch" [style.background]="roleColor(seg.role)"></span>
+              {{ seg.role }}: ~{{ seg.tokens }} token
+            </span>
+            <span class="legend-total">totale ~{{ contextAnatomy(step)?.totalTokens }} token</span>
+          </div>
+          <div class="anatomy-delta" *ngIf="anatomyDelta(step) !== null">
+            +{{ anatomyDelta(step) }} token rispetto al round precedente
+          </div>
+        </div>
 
         <div class="step-expanded" *ngIf="isExpanded(step)">
           <div
@@ -100,6 +132,12 @@
             class="final-answer"
           >
             {{ step.finalContent }}
+
+            <!-- Visualizzatore didattico: appare solo se la run ha richiesto i logprobs. -->
+            <app-token-probability-viewer
+              *ngIf="step.tokenProbs && step.tokenProbs.length"
+              [tokens]="step.tokenProbs"
+            ></app-token-probability-viewer>
           </div>
 
           <div *ngIf="step.kind === 'run-failed'" class="run-error">
@@ -119,4 +157,161 @@
       qui in tempo reale.
     </p>
   </div>
+
+  <!-- ==================================================================== -->
+  <!-- Suite di test (eval): casi JSON, esecuzione in sequenza, tabella.   -->
+  <!-- ==================================================================== -->
+  <section class="eval-box">
+    <h2>Suite di test</h2>
+
+    <textarea
+      class="eval-json"
+      rows="14"
+      spellcheck="false"
+      [(ngModel)]="evalJson"
+      placeholder='[ { "name": "...", "prompt": "...", "checks": [ { "type": "contains", "value": "..." } ] } ]'
+    ></textarea>
+
+    <div class="eval-actions">
+      <button (click)="runEval()" [disabled]="evalRunning || compareRunning">
+        {{ evalRunning ? 'Esecuzione in corso…' : '▶ Esegui suite' }}
+      </button>
+
+      <label class="compare-toggle">
+        <input type="checkbox" [(ngModel)]="compareEnabled" />
+        Confronto A/B
+      </label>
+    </div>
+
+    <!-- Confronto A/B: due configurazioni opzionali, stessa suite. -->
+    <div class="compare-box" *ngIf="compareEnabled">
+      <div class="compare-forms">
+        <fieldset class="compare-config">
+          <legend>Configurazione A</legend>
+          <label>Temperature
+            <input type="number" step="0.1" min="0" max="2" [(ngModel)]="configA.temperature" placeholder="(attuale)" />
+          </label>
+          <label>System prompt
+            <textarea rows="3" [(ngModel)]="configA.systemPrompt" placeholder="(default)"></textarea>
+          </label>
+          <label>Max round
+            <input type="number" min="1" max="50" [(ngModel)]="configA.maxRounds" placeholder="(attuale)" />
+          </label>
+        </fieldset>
+
+        <fieldset class="compare-config">
+          <legend>Configurazione B</legend>
+          <label>Temperature
+            <input type="number" step="0.1" min="0" max="2" [(ngModel)]="configB.temperature" placeholder="(attuale)" />
+          </label>
+          <label>System prompt
+            <textarea rows="3" [(ngModel)]="configB.systemPrompt" placeholder="(default)"></textarea>
+          </label>
+          <label>Max round
+            <input type="number" min="1" max="50" [(ngModel)]="configB.maxRounds" placeholder="(attuale)" />
+          </label>
+        </fieldset>
+      </div>
+
+      <button class="compare-run" (click)="runEvalCompare()" [disabled]="compareRunning || evalRunning">
+        {{ compareRunning ? 'Confronto in corso…' : '⚖ Confronta A/B' }}
+      </button>
+
+      <div class="eval-error" *ngIf="compareError">{{ compareError }}</div>
+
+      <!-- Risultato del confronto: riepilogo + tabella caso | A | B | variazione. -->
+      <div *ngIf="compareResult">
+        <div class="eval-summary compare-summary">
+          Passati: <span class="pass">A {{ compareResult.a.passedCount }}</span> vs
+          <span class="pass">B {{ compareResult.b.passedCount }}</span> —
+          Durata totale: A {{ formatMs(compareResult.a.totalDurationMs) }} vs B {{ formatMs(compareResult.b.totalDurationMs) }}
+        </div>
+
+        <table class="eval-table compare-table">
+          <thead>
+            <tr>
+              <th>Caso</th>
+              <th>A</th>
+              <th>B</th>
+              <th>Variazione</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let d of compareResult.diff" [class.better]="d.variation === 'migliorato'" [class.worse]="d.variation === 'peggiorato'">
+              <td class="case-name">{{ d.name }}</td>
+              <td>{{ d.passedA ? '✅ PASS' : '❌ FAIL' }}</td>
+              <td>{{ d.passedB ? '✅ PASS' : '❌ FAIL' }}</td>
+              <td class="variation">{{ d.variation }}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Dettaglio per caso: esiti dei check e risposta finale di A e B. -->
+        <details *ngFor="let d of compareResult.diff; let i = index" class="eval-detail">
+          <summary>{{ d.name }} — dettaglio A/B</summary>
+          <div class="compare-detail-cols">
+            <div>
+              <h4>A</h4>
+              <div *ngFor="let f of failedChecks(compareResult.a.cases[i])" class="check-fail">
+                <strong>{{ f.type }}({{ f.value }})</strong>: {{ f.reason }}
+              </div>
+              <pre class="detail-answer">{{ compareResult.a.cases[i].finalAnswer || '(nessuna risposta)' }}</pre>
+            </div>
+            <div>
+              <h4>B</h4>
+              <div *ngFor="let f of failedChecks(compareResult.b.cases[i])" class="check-fail">
+                <strong>{{ f.type }}({{ f.value }})</strong>: {{ f.reason }}
+              </div>
+              <pre class="detail-answer">{{ compareResult.b.cases[i].finalAnswer || '(nessuna risposta)' }}</pre>
+            </div>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <div class="eval-error" *ngIf="evalError">{{ evalError }}</div>
+
+    <div *ngIf="evalResult">
+      <div class="eval-summary">
+        Totale: {{ evalResult.cases.length }} casi —
+        <span class="pass">{{ evalResult.passedCount }} passati</span> /
+        <span class="fail">{{ evalResult.failedCount }} falliti</span>
+      </div>
+
+      <table class="eval-table">
+        <thead>
+          <tr>
+            <th>Caso</th>
+            <th>Esito</th>
+            <th>Check falliti (motivo)</th>
+            <th>Round</th>
+            <th>Durata</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let c of evalResult.cases" [class.pass]="c.passed" [class.fail]="!c.passed">
+            <td class="case-name">{{ c.name }}</td>
+            <td>{{ c.passed ? '✅ PASS' : '❌ FAIL' }}</td>
+            <td class="failed-checks">
+              <div *ngIf="failedChecks(c).length === 0" class="no-fail">—</div>
+              <div *ngFor="let f of failedChecks(c)" class="check-fail">
+                <strong>{{ f.type }}({{ f.value }})</strong>: {{ f.reason }}
+              </div>
+            </td>
+            <td>{{ c.rounds }}</td>
+            <td>{{ formatMs(c.durationMs) }}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Dettaglio per caso: risposta finale e tool chiamati. -->
+      <details *ngFor="let c of evalResult.cases" class="eval-detail">
+        <summary>{{ c.name }} — risposta finale</summary>
+        <div class="detail-tools" *ngIf="c.toolsCalled.length">
+          Tool chiamati: {{ c.toolsCalled.join(', ') }}
+        </div>
+        <pre class="detail-answer">{{ c.finalAnswer || '(nessuna risposta)' }}</pre>
+      </details>
+    </div>
+  </section>
 </div>

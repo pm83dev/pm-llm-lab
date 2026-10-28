@@ -13,7 +13,12 @@ import {
   TokenData,
   ToolCallDetectedData,
   ToolExecutingData,
+  TokenProbData,
   ToolResultData,
+  EvalCase,
+  EvalCompareResult,
+  EvalRunConfig,
+  EvalSuiteResult,
 } from './models';
 
 // ============================================================================
@@ -34,13 +39,28 @@ export class LabService {
   private nextId = 1;
   private abortController: AbortController | null = null;
 
+  // Token probabilizzati accumulati durante la run corrente (solo se il client li ha richiesti).
+  private tokenProbs: TokenProbData[] = [];
+
   // URL dell'API. In dev, il proxy di Angular (proxy.conf.json) inoltra /api/*
   // al backend, quindi possiamo usare un percorso relativo.
   private readonly apiUrl = '/api/lab/run';
 
   // Avvia una nuova esecuzione: invia il prompt e inizia ad ascoltare gli eventi.
-  run(prompt: string): void {
-    this.reset();
+  // La timeline NON viene svuotata: le esecuzioni precedenti restano visibili e
+  // ogni run aggiunge uno step separatore con il proprio prompt all'inizio.
+  run(prompt: string, includeLogprobs = false): void {
+    this.tokenProbs = [];
+
+    const steps = [...this._steps.value];
+    steps.push({
+      id: this.nextId++,
+      kind: 'run-separator',
+      title: `Nuova esecuzione — "${prompt}"`,
+      timestamp: Date.now(),
+    });
+    this._steps.next(steps);
+
     this._running.next(true);
     this._error.next(null);
 
@@ -49,7 +69,7 @@ export class LabService {
     fetch(this.apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({ prompt, includeLogprobs }),
       signal: this.abortController.signal,
     })
       .then(async (response) => {
@@ -88,9 +108,66 @@ export class LabService {
     this._running.next(false);
   }
 
-  private reset(): void {
-    this._steps.next([]);
-    this.nextId = 1;
+  // ============================================================================
+  // Suite di test (eval): esegue tutti i casi in sequenza sul backend e restituisce
+  // il risultato completo. Non tocca lo stato della run singola (steps/running).
+  // ============================================================================
+  private readonly evalUrl = '/api/lab/eval';
+  private readonly evalCompareUrl = '/api/lab/eval/compare';
+
+  // Confronto A/B: stessa suite con due configurazioni, eseguite in sequenza dal backend.
+  async runEvalCompare(cases: EvalCase[], configA: EvalRunConfig, configB: EvalRunConfig): Promise<EvalCompareResult> {
+    const response = await fetch(this.evalCompareUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cases, configA, configB }),
+    });
+
+    if (!response.ok) {
+      let detail = `HTTP ${response.status}: ${response.statusText}`;
+      try {
+        const body = await response.json();
+        if (body && typeof body.error === 'string') detail = body.error;
+        else if (body && typeof body.title === 'string' && body.status) {
+          // Problem Details (ASP.NET Core): mostra titolo + dettagli.
+          detail = `${body.title} (${response.status})`;
+          if (Array.isArray(body.errors)) {
+            const first = Object.values(body.errors)[0];
+            if (first && typeof first === 'string') detail += `: ${first}`;
+          }
+        }
+      } catch { /* corpo non JSON: mantengo il dettaglio HTTP */ }
+      throw new Error(detail);
+    }
+
+    return (await response.json()) as EvalCompareResult;
+  }
+
+  async runEval(cases: EvalCase[]): Promise<EvalSuiteResult> {
+    const response = await fetch(this.evalUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cases }),
+    });
+
+    if (!response.ok) {
+      let detail = `HTTP ${response.status}: ${response.statusText}`;
+      try {
+        const body = await response.json();
+        if (body && typeof body.error === 'string') detail = body.error;
+        else if (body && typeof body.title === 'string' && body.status) {
+          // Problem Details (ASP.NET Core): mostra titolo + dettagli.
+          detail = `${body.title} (${response.status})`;
+          if (Array.isArray(body.errors)) {
+            const first = Object.values(body.errors)[0];
+            if (first && typeof first === 'string') detail += `: ${first}`;
+          }
+        }
+      } catch { /* corpo non JSON: mantengo il dettaglio HTTP */ }
+      throw new Error(detail);
+    }
+
+    return (await response.json()) as EvalSuiteResult;
   }
 
   // Parsa un singolo evento SSE (righe "event:" e "data:").
@@ -172,7 +249,7 @@ export class LabService {
         const d = evt.data as TokenData;
         // Aggiorniamo l'ultimo step di tipo 'streaming' dello stesso round,
         // oppure ne creiamo uno nuovo.
-        const streamingIdx = this.findLastIndex(
+        const streamingIdx = this.findLastIndexInCurrentRun(
           steps,
           (s) => s.kind === 'streaming' && s.round === evt.round,
         );
@@ -194,6 +271,13 @@ export class LabService {
             timestamp: evt.timestamp,
           });
         }
+        break;
+      }
+
+      case 'tokenprob': {
+        // Accumuliamo i token probabilizzati: verranno allegati alla risposta finale.
+        const d = evt.data as TokenProbData;
+        this.tokenProbs.push(d);
         break;
       }
 
@@ -231,7 +315,7 @@ export class LabService {
       case 'toolresult': {
         const d = evt.data as ToolResultData;
         // Chiudiamo lo step di esecuzione (pending) e aggiungiamo il risultato.
-        const execIdx = this.findLastIndex(
+        const execIdx = this.findLastIndexInCurrentRun(
           steps,
           (s) =>
             s.kind === 'tool-exec' &&
@@ -264,6 +348,7 @@ export class LabService {
           round: evt.round,
           title: `Risposta finale`,
           finalContent: d.content,
+          tokenProbs: this.tokenProbs.length > 0 ? [...this.tokenProbs] : undefined,
           totalRounds: d.totalRounds,
           totalDurationMs: d.totalDurationMs,
           timestamp: evt.timestamp,
@@ -274,7 +359,7 @@ export class LabService {
       case 'roundcompleted': {
         const d = evt.data as RoundCompletedData;
         // Chiudiamo lo step di round-start (pending) di questo round.
-        const roundIdx = this.findLastIndex(
+        const roundIdx = this.findLastIndexInCurrentRun(
           steps,
           (s) => s.kind === 'round-start' && s.round === d.round,
         );
@@ -321,18 +406,30 @@ export class LabService {
     this._steps.next(steps);
   }
 
-  private findLastIndex(
-    arr: TimelineStep[],
+  // Indice dell'ultimo step 'run-separator': le ricerche per round devono
+  // fermarsi qui, altrimenti una run nuova aggancerebbe gli step (es. streaming)
+  // della stessa round di una esecuzione precedente. -1 se non c'è separatore.
+  private currentRunStartIndex(steps: TimelineStep[]): number {
+    for (let i = steps.length - 1; i >= 0; i--) {
+      if (steps[i].kind === 'run-separator') return i;
+    }
+    return -1;
+  }
+
+  // findLastIndex limitato agli step della run corrente (dopo l'ultimo separatore).
+  private findLastIndexInCurrentRun(
+    steps: TimelineStep[],
     pred: (s: TimelineStep) => boolean,
   ): number {
-    for (let i = arr.length - 1; i >= 0; i--) {
-      if (pred(arr[i])) return i;
+    const start = this.currentRunStartIndex(steps);
+    for (let i = steps.length - 1; i > start; i--) {
+      if (pred(steps[i])) return i;
     }
     return -1;
   }
 
   private closePendingStreaming(steps: TimelineStep[], round?: number): void {
-    const idx = this.findLastIndex(
+    const idx = this.findLastIndexInCurrentRun(
       steps,
       (s) =>
         s.kind === 'streaming' && s.round === round && s.isPending === true,

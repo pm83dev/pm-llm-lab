@@ -8,6 +8,7 @@ export type LabEventType =
   | 'roundcompleted'
   | 'promptsent'
   | 'token'
+  | 'tokenprob'
   | 'toolcalldelta'
   | 'toolcalldetected'
   | 'toolexecuting'
@@ -68,6 +69,18 @@ export interface TokenData {
   text: string;
 }
 
+// Un token con la sua probabilità (0..1) e le top alternative al suo posto.
+export interface TokenAlternative {
+  token: string;
+  prob: number; // 0..1
+}
+
+export interface TokenProbData {
+  token: string;
+  prob: number; // 0..1 (exp del logprob)
+  alternatives: TokenAlternative[]; // top-5, ordinate per probabilità decrescente
+}
+
 export interface ToolCallDeltaData {
   index: number;
   id?: string;
@@ -114,6 +127,7 @@ export interface LabEvent {
 // ============================================================================
 
 export type StepKind =
+  | 'run-separator'
   | 'run-start'
   | 'round-start'
   | 'prompt'
@@ -135,6 +149,8 @@ export interface TimelineStep {
   promptData?: PromptSentData;
   // Per 'streaming': il testo accumulato token-by-token.
   streamingText?: string;
+  // Per 'final-answer' (solo se il client ha richiesto i logprobs): i token con probabilità.
+  tokenProbs?: TokenProbData[];
   // Per 'tool-call' / 'tool-exec' / 'tool-result'.
   toolName?: string;
   toolArgs?: string;
@@ -152,4 +168,65 @@ export interface TimelineStep {
   // Stato di esecuzione per mostrare spinner.
   isPending?: boolean;
   timestamp: number;
+}
+
+// ============================================================================
+// Suite di test (eval): modelli che riflettono la risposta di POST /api/lab/eval.
+// ============================================================================
+
+export interface EvalCheck {
+  type: string;      // contains | notContains | regex | toolCalled | maxRounds
+  value: string;
+}
+
+export interface EvalCase {
+  name: string;
+  prompt: string;
+  checks: EvalCheck[];
+}
+
+export interface EvalCheckResult {
+  type: string;
+  value: string;
+  passed: boolean;
+  reason?: string | null;   // motivo del fallimento (null se il check passa)
+}
+
+export interface EvalCaseResult {
+  name: string;
+  passed: boolean;
+  checkResults: EvalCheckResult[];
+  finalAnswer?: string | null;
+  toolsCalled: string[];
+  rounds: number;
+  durationMs: number;
+}
+
+export interface EvalSuiteResult {
+  cases: EvalCaseResult[];
+  passedCount: number;
+  failedCount: number;
+  totalDurationMs: number;
+}
+
+// Confronto A/B della suite di test (eval): configurazione opzionale per esecuzione e diff per caso.
+export interface EvalRunConfig {
+  temperature?: number | null;
+  systemPrompt?: string | null;
+  maxRounds?: number | null;
+}
+
+export type EvalCompareVariation = 'migliorato' | 'peggiorato' | 'uguale';
+
+export interface EvalCompareCaseDiff {
+  name: string;
+  passedA: boolean;
+  passedB: boolean;
+  variation: EvalCompareVariation;
+}
+
+export interface EvalCompareResult {
+  a: EvalSuiteResult;
+  b: EvalSuiteResult;
+  diff: EvalCompareCaseDiff[];
 }

@@ -41,6 +41,7 @@ public enum LabEventType
 
     // --- Streaming ---
     Token,             // un frammento di testo generato dal modello (token-by-token)
+    TokenProb,         // un token con la sua probabilità e le top-N alternative (solo se richiesto)
     ToolCallDelta,     // un frammento di una tool call in costruzione (id/name/args)
 
     // --- Tool ---
@@ -83,6 +84,13 @@ public record PromptMessageView(string Role, string Content, List<ToolCallView>?
 public record ToolCallView(string FunctionName, string ArgumentsJson, string Id);
 
 public record TokenData(string Text);
+
+// Un token con la sua probabilità (0..1) e le alternative più probabili al suo posto.
+// `prob` è exp(logprob) del token scelto; `alternatives` sono le top-N esclusive,
+// ordinate per probabilità decrescente (il token scelto non c'è).
+public record TokenProbData(string Token, double Prob, List<TokenAlternative> Alternatives);
+public record TokenAlternative(string Token, double Prob);
+
 public record ToolCallDeltaData(int Index, string? Id, string? Name, string ArgumentsDelta);
 
 public record ToolCallDetectedData(string FunctionName, string ArgumentsJson, string Id);

@@ -61,7 +61,25 @@
   .prompt-actions {
     display: flex;
     gap: 8px;
+    align-items: center;
     margin-top: 12px;
+
+    .prob-toggle {
+      margin-right: auto;
+      font-size: 13px;
+      color: #475569;
+      cursor: pointer;
+
+      input {
+        vertical-align: middle;
+        margin-right: 4px;
+      }
+
+      &:has(input:disabled) {
+        color: #94a3b8;
+        cursor: not-allowed;
+      }
+    }
   }
 }
 
@@ -243,6 +261,70 @@
   color: #64748b;
 }
 
+// Anatomia del contesto: barra divisa per ruolo + legenda, sullo step 'prompt'.
+.context-anatomy {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+
+  .anatomy-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 6px;
+  }
+
+  .anatomy-bar {
+    display: flex;
+    height: 18px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: #e2e8f0;
+
+    .anatomy-seg {
+      height: 100%;
+      transition: width 0.3s ease;
+      min-width: 2px;
+    }
+  }
+
+  .anatomy-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    margin-top: 8px;
+    font-size: 12px;
+    color: #475569;
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .legend-swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      display: inline-block;
+    }
+
+    .legend-total {
+      font-weight: 600;
+      color: #1e293b;
+    }
+  }
+
+  .anatomy-delta {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #059669;
+    font-weight: 500;
+  }
+}
+
 .step-expanded {
   margin-top: 12px;
   padding-top: 12px;
@@ -373,5 +455,234 @@
     font-size: 13px;
     color: #991b1b;
     white-space: pre-wrap;
+  }
+}
+
+// ============================================================================
+// Suite di test (eval)
+// ============================================================================
+
+.eval-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 24px;
+
+  h2 {
+    margin: 0 0 12px;
+    font-size: 20px;
+    color: #334155;
+  }
+
+  .eval-json {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 13px;
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    resize: vertical;
+    box-sizing: border-box;
+
+    &:focus {
+      outline: none;
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+    }
+  }
+
+  .eval-actions {
+    margin-top: 12px;
+
+    button {
+      background: linear-gradient(90deg, #6366f1, #8b5cf6);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+
+      &:hover:not(:disabled) { opacity: 0.9; }
+
+      &:disabled {
+        background: #cbd5e1;
+        cursor: not-allowed;
+      }
+    }
+  }
+
+  .eval-error {
+    margin-top: 12px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: #b91c1c;
+    font-size: 13px;
+  }
+
+  .eval-summary {
+    margin-top: 16px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #334155;
+
+    .pass { color: #15803d; }
+    .fail { color: #b91c1c; }
+  }
+
+  .eval-table {
+    width: 100%;
+    margin-top: 12px;
+    border-collapse: collapse;
+    font-size: 13px;
+
+    th, td {
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 1px solid #e2e8f0;
+      vertical-align: top;
+    }
+
+    th {
+      background: #eef2ff;
+      color: #3730a3;
+      font-weight: 600;
+    }
+
+    tr.pass td { background: #f0fdf4; }
+    tr.fail td { background: #fef2f2; }
+
+    .case-name { font-weight: 600; color: #1e293b; }
+
+    .failed-checks {
+      .no-fail { color: #94a3b8; }
+
+      .check-fail {
+        color: #b91c1c;
+        margin-bottom: 4px;
+
+        strong { font-weight: 600; }
+      }
+    }
+  }
+
+  .eval-detail {
+    margin-top: 8px;
+
+    summary {
+      cursor: pointer;
+      font-size: 13px;
+      color: #475569;
+      padding: 4px 0;
+    }
+
+    .detail-tools {
+      margin-top: 6px;
+      font-size: 12px;
+      color: #6d28d9;
+    }
+
+    .detail-answer {
+      margin-top: 6px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 12px;
+      white-space: pre-wrap;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+
+    // Confronto A/B: righe evidenziate per variazione.
+    tr.better td { background: #dcfce7; }
+    tr.worse td { background: #fee2e2; }
+
+    .variation { font-weight: 600; text-transform: capitalize; }
+  }
+
+  // Confronto A/B: form affiancati e dettaglio a due colonne.
+  .compare-toggle {
+    margin-left: 16px;
+    font-size: 14px;
+    color: #334155;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+
+    input { cursor: pointer; }
+  }
+
+  .compare-box {
+    margin-top: 12px;
+    padding: 12px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+  }
+
+  .compare-forms {
+    display: flex;
+    gap: 16px;
+
+    @media (max-width: 720px) { flex-direction: column; }
+  }
+
+  .compare-config {
+    flex: 1;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px;
+
+    legend { font-weight: 600; color: #1e293b; padding: 0 6px; }
+
+    label {
+      display: block;
+      margin-top: 8px;
+      font-size: 13px;
+      color: #475569;
+
+      input, textarea {
+        display: block;
+        width: 100%;
+        margin-top: 4px;
+        padding: 6px 8px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        font-size: 13px;
+      }
+
+      textarea { resize: vertical; }
+    }
+  }
+
+  .compare-run {
+    margin-top: 12px;
+    padding: 8px 16px;
+    background: #4f46e5;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+
+    &:disabled { opacity: 0.6; cursor: not-allowed; }
+  }
+
+  .compare-summary { margin-bottom: 4px; }
+
+  .compare-detail-cols {
+    display: flex;
+    gap: 16px;
+
+    @media (max-width: 720px) { flex-direction: column; }
+
+    > div { flex: 1; min-width: 0; }
+
+    h4 { margin: 8px 0 4px; font-size: 13px; color: #1e293b; }
   }
 }

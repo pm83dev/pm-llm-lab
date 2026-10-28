@@ -14,7 +14,7 @@ var services = new ServiceCollection();
 // nel body della richiesta (vedi LlmClient.cs) è un placeholder: molti server locali
 // ignorano il campo "model" e servono comunque il modello caricato.
 services.AddHttpClient("llm", c =>
-    c.BaseAddress = new Uri("http://100.90.112.22:9000/v1/chat/completions"));
+    c.BaseAddress = new Uri("http://100.121.40.27:9005/v1/chat/completions"));
 
 services.AddSingleton<ILLMClient, OpenAILocalClient>();
 
