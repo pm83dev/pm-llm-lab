@@ -1,9 +1,7 @@
-namespace LocalLLM.Tools;
+namespace LocalLLMBase;
 
 using System.Diagnostics;
 using System.Text.Json;
-using LocalLLM.Models;
-
 
 // Contratto che ogni "capacità" concreta dell'agente deve rispettare. Il modello NON conosce
 // questa interfaccia: conosce solo Name/Description/parametri tradotti in JSON Schema

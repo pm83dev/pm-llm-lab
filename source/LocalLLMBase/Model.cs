@@ -1,4 +1,4 @@
-namespace LocalLLM.Models;
+namespace LocalLLMBase;
 
 // Rappresenta UN messaggio della conversazione, così come lo intende l'API OpenAI-compatible.
 // L'intera "memoria" dell'agente è solo una List<ChatMessage>: non c'è nessuno stato nascosto

@@ -1,6 +1,4 @@
-namespace LocalLLM.Services;
-
-using LocalLLM.Models;
+namespace LocalLLMBase;
 
 // Accumulatore per UN round di streaming: OpenAILocalClient.StreamChatAsync riempie questo
 // oggetto delta dopo delta man mano che leggiamo lo Server-Sent-Events dal server LLM.

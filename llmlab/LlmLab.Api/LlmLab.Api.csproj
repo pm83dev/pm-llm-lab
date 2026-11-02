@@ -5,7 +5,7 @@
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <!-- La SPA è in una cartella sorella; il suo output finisce in wwwroot -->
-        <WebProjectDir Condition="'$(WebProjectDir)' == ''">$(MSBuildThisFileDirectory)..\LlmLab.Web</WebProjectDir>
+        <WebProjectDir Condition="'$(WebProjectDir)' == ''">$(MSBuildThisFileDirectory)LlmLab.Web</WebProjectDir>
     </PropertyGroup>
 
     <ItemGroup>

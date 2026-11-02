@@ -1,9 +1,8 @@
-namespace LocalLLM.Services;
+namespace LocalLLMBase;
 
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
-using LocalLLM.Models;
 
 public interface ILLMClient
 {
@@ -73,19 +72,39 @@ public class OpenAILocalClient : ILLMClient
         // diversamente nei due casi.
         var toolsJson = tools != null ? JsonSerializer.Serialize(tools) : null;
 
-        var requestBody = toolsJson != null
-            ? $"{{\"model\":\"local\",\"messages\":{messagesJson},\"stream\":true,\"tools\":{toolsJson}}}"
-            : $"{{\"model\":\"local\",\"messages\":{messagesJson},\"stream\":true}}";
+        JsonElement messagesElem = JsonDocument.Parse(messagesJson).RootElement;
+        JsonElement? toolsElem = toolsJson != null ? JsonDocument.Parse(toolsJson).RootElement : null;
+
+        string toolsFragment = "";
+        if (toolsElem.HasValue)
+        {
+            toolsFragment = $",\"tools\": {toolsElem.Value.GetRawText()}";
+        }
+
+        using var requestBodyDoc = JsonDocument.Parse($$"""
+        {
+            "model": "local",
+            "messages": {{messagesElem.GetRawText()}},
+            "stream": true{{toolsFragment}}
+        }
+        """);
+
+        var bodyText = requestBodyDoc.RootElement.GetRawText();
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "")
         {
-            Content = new StringContent(requestBody, Encoding.UTF8, "application/json")
+            Content = new StringContent(bodyText, Encoding.UTF8, "application/json")
         };
 
         // HttpCompletionOption.ResponseHeadersRead: non aspettiamo che la risposta sia
         // tutta arrivata, iniziamo a leggere lo stream appena arrivano gli header —
         // altrimenti perderemmo l'effetto "streaming" e aspetteremmo comunque tutto il testo.
         using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(ct);
+            throw new HttpRequestException($"LLM server returned HTTP {response.StatusCode}: {errorBody}");
+        }
         using var reader = new System.IO.StreamReader(await response.Content.ReadAsStreamAsync(ct));
 
         // Il protocollo è Server-Sent Events: ogni riga utile inizia con "data: " e contiene

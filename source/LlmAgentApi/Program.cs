@@ -1,6 +1,4 @@
-using LocalLLM.Core;
-using LocalLLM.Services;
-using LocalLLM.Tools;
+using LocalLLMBase;
 using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
