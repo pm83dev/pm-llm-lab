@@ -90,6 +90,8 @@ public class OpenAILocalClient : ILLMClient
 
         // Il protocollo è Server-Sent Events: ogni riga utile inizia con "data: " e contiene
         // un frammento (delta) di JSON. "data: [DONE]" segnala la fine dello stream.
+        // Ollama aggiunge anche un campo "usage" in ogni chunk (o solo nell'ultimo) con
+        // prompt_tokens, completion_tokens, total_tokens e timing vari.
         while (!ct.IsCancellationRequested)
         {
             var line = await reader.ReadLineAsync(ct);
@@ -100,6 +102,42 @@ public class OpenAILocalClient : ILLMClient
             {
                 var json = line["data: ".Length..];
                 using var doc = JsonDocument.Parse(json);
+
+                // --- Estrai usage/timing se presente (Ollama) ---
+                if (doc.RootElement.TryGetProperty("usage", out var usage))
+                {
+                    if (usage.TryGetProperty("prompt_tokens", out var pt))
+                        _pendingResult!.PromptTokens = pt.GetInt32();
+                    if (usage.TryGetProperty("completion_tokens", out var ct2))
+                        _pendingResult!.CompletionTokens = ct2.GetInt32();
+                    if (usage.TryGetProperty("total_tokens", out var tt))
+                        _pendingResult!.TotalTokens = tt.GetInt32();
+                    // total_duration è in nanosecondi (long); convertiamo in ms.
+                    if (usage.TryGetProperty("total_duration", out var td))
+                        _pendingResult!.TotalTimeMs = td.GetInt64() / 1_000_000;
+                }
+
+                // --- Estrai timings se presente (llama.cpp / llama-server) ---
+                // llama.cpp non usa "usage" ma "timings" nell'ultimo chunk SSE.
+                if (doc.RootElement.TryGetProperty("timings", out var timings))
+                {
+                    if (timings.TryGetProperty("prompt_n", out var pn))
+                        _pendingResult!.PromptTokens = pn.GetInt32();
+                    if (timings.TryGetProperty("predicted_n", out var pnd))
+                        _pendingResult!.CompletionTokens = pnd.GetInt32();
+                    // Calcola total_tokens come somma (llama.cpp non lo espone direttamente)
+                    if (_pendingResult.PromptTokens.HasValue && _pendingResult.CompletionTokens.HasValue)
+                        _pendingResult.TotalTokens = _pendingResult.PromptTokens.Value + _pendingResult.CompletionTokens.Value;
+                    // prompt_ms + predicted_ms = tempo totale in millisecondi (double)
+                    double totalMs = 0;
+                    if (timings.TryGetProperty("prompt_ms", out var pm))
+                        totalMs += pm.GetDouble();
+                    if (timings.TryGetProperty("predicted_ms", out var pmd))
+                        totalMs += pmd.GetDouble();
+                    if (totalMs > 0)
+                        _pendingResult.TotalTimeMs = (long)totalMs;
+                }
+
                 var delta = doc.RootElement.GetProperty("choices")[0].GetProperty("delta");
 
                 // Caso 1: il modello sta scrivendo testo normale -> lo mandiamo subito

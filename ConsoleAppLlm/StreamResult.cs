@@ -15,4 +15,16 @@ public class StreamResult
     // Null finché il modello non inizia a emettere una function call nello stream;
     // valorizzato e riempito progressivamente (vedi LlmClient.cs) se lo fa.
     public List<ToolCall>? ToolCalls { get; set; } = null;
+
+    // Timing: tempo totale della richiesta in millisecondi (solo Ollama, null per altri backend).
+    public long? TotalTimeMs { get; set; } = null;
+
+    // Prompt tokens ricevuti dal modello (solo Ollama, null se non disponibile).
+    public int? PromptTokens { get; set; } = null;
+
+    // Completion tokens generati dal modello (solo Ollama, null se non disponibile).
+    public int? CompletionTokens { get; set; } = null;
+
+    // Total tokens (prompt + completion).
+    public int? TotalTokens { get; set; } = null;
 }
