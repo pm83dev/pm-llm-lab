@@ -192,6 +192,14 @@ export interface EvalCheckResult {
   reason?: string | null;   // motivo del fallimento (null se il check passa)
 }
 
+// Un passo della timeline didattica di una run (dal backend).
+export interface EvalStep {
+  kind: string;      // round | toolCall | toolResult | answer
+  round: number;
+  title: string;
+  detail?: string | null;
+}
+
 export interface EvalCaseResult {
   name: string;
   passed: boolean;
@@ -200,6 +208,7 @@ export interface EvalCaseResult {
   toolsCalled: string[];
   rounds: number;
   durationMs: number;
+  steps?: EvalStep[];
 }
 
 export interface EvalSuiteResult {

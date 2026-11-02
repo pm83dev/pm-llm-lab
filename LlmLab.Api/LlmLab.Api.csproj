@@ -4,6 +4,8 @@
         <TargetFramework>net8.0</TargetFramework>
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
+        <!-- La SPA è in una cartella sorella; il suo output finisce in wwwroot -->
+        <WebProjectDir Condition="'$(WebProjectDir)' == ''">$(MSBuildThisFileDirectory)..\LlmLab.Web</WebProjectDir>
     </PropertyGroup>
 
     <ItemGroup>
@@ -13,5 +15,26 @@
     <ItemGroup>
         <ProjectReference Include="..\LlmLab.Shared\LlmLab.Shared.csproj" />
     </ItemGroup>
+
+    <!-- Copia il bundle Angular da wwwroot in output di build/publish (dev e prod) -->
+    <ItemGroup>
+        <None Include="wwwroot\**" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
+    <!--
+      SPA: prima della build, assicura che il bundle Angular sia in wwwroot.
+      Se wwwroot/index.html manca, compila il frontend in production e copia
+      il risultato. Per forzare la recompilazione: dotnet build -p:SkipWeb=false
+      (o rimuovi wwwroot). Per saltarlo del tutto: -p:SkipWeb=true
+    -->
+    <Target Name="PublishWeb" BeforeTargets="Build;Publish" Condition="'$(SkipWeb)' != 'true' AND !Exists('$(MSBuildProjectDirectory)\wwwroot\index.html')">
+        <MakeDir Directories="$(MSBuildProjectDirectory)\wwwroot" />
+        <Exec WorkingDirectory="$(WebProjectDir)" Command="npm ci --no-audit --no-fund" />
+        <Exec WorkingDirectory="$(WebProjectDir)" Command="ng build --configuration production" />
+        <ItemGroup>
+            <WebDist Include="$(WebProjectDir)\dist\llm-lab.web\browser\**\*" />
+        </ItemGroup>
+        <Copy SourceFiles="@(WebDist)" DestinationFolder="$(MSBuildProjectDirectory)\wwwroot\%(RecursiveDir)" SkipUnchangedFiles="true" />
+    </Target>
 
 </Project>

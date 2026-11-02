@@ -87,8 +87,9 @@ services.AddSingleton<AgentOrchestrator>(sp =>
                 parameters = new {
                     type = "object",
                     properties = new {
-                        type = "object",
-                        properties = new { word = new { type = "string", description = "Parola da cercare." } }, required = new string[0] }
+                        word = new { type = "string", description = "Parola da cercare." }
+                    },
+                    required = new[] { "word" }
                 }
             }
         },

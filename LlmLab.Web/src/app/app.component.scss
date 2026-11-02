@@ -492,6 +492,21 @@
     }
   }
 
+  .eval-hint {
+    margin: 8px 0 0;
+    font-size: 12px;
+    color: #64748b;
+
+    code {
+      background: #eef2ff;
+      border: 1px solid #c7d2fe;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+      font-size: 11px;
+    }
+  }
+
   .eval-actions {
     margin-top: 12px;
 
@@ -596,6 +611,68 @@
       white-space: pre-wrap;
       max-height: 240px;
       overflow-y: auto;
+    }
+
+    // Timeline degli step della run (round/toolCall/toolResult/answer).
+    .eval-timeline {
+      list-style: none;
+      margin: 8px 0;
+      padding: 0;
+      border-left: 2px solid #cbd5e1;
+      max-height: 320px;
+      overflow-y: auto;
+
+      li {
+        position: relative;
+        margin: 0 0 8px 12px;
+        padding-left: 14px;
+        font-size: 12px;
+
+        &::before {
+          content: '';
+          position: absolute;
+          left: -7px;
+          top: 4px;
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          background: #94a3b8;
+        }
+
+        &.step-round::before    { background: #2563eb; }
+        &.step-toolCall::before { background: #d97706; }
+        &.step-toolResult::before { background: #059669; }
+        &.step-answer::before   { background: #7c3aed; }
+      }
+
+      .step-kind {
+        display: inline-block;
+        font-weight: 600;
+        color: #475569;
+        margin-right: 6px;
+      }
+
+      .step-round {
+        display: inline-block;
+        font-size: 10px;
+        background: #e2e8f0;
+        border-radius: 8px;
+        padding: 0 6px;
+        margin-right: 6px;
+        color: #475569;
+      }
+
+      .step-title { color: #1e293b; }
+
+      .step-detail {
+        margin-top: 2px;
+        padding: 6px 8px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        white-space: pre-wrap;
+        color: #475569;
+      }
     }
 
     // Confronto A/B: righe evidenziate per variazione.

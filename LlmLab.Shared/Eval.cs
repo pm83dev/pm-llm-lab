@@ -17,6 +17,12 @@ public record EvalCase(string Name, string Prompt, List<EvalCheck> Checks);
 // Esito di un singolo check. `Reason` è il motivo del fallimento (null se passa).
 public record EvalCheckResult(string Type, string Value, bool Passed, string? Reason);
 
+// Un passo della timeline didattica di una run: cosa è successo, in ordine.
+// `Kind` è uno di: "round" (inizia un round), "toolCall" (il modello chiede un
+// tool), "toolResult" (il tool restituisce un risultato/errore), "answer"
+// (risposta finale del modello). `Round` indica in quale round è avvenuto.
+public record EvalStep(string Kind, int Round, string Title, string? Detail = null);
+
 // Esito completo di un caso della suite.
 public record EvalCaseResult(
     string Name,
@@ -25,7 +31,8 @@ public record EvalCaseResult(
     string? FinalAnswer,
     List<string> ToolsCalled,
     int Rounds,
-    long DurationMs);
+    long DurationMs,
+    List<EvalStep> Steps = null!);
 
 // Esito dell'intera suite: risultati per caso + contatori + durata totale.
 public record EvalSuiteResult(List<EvalCaseResult> Cases, int PassedCount, int FailedCount, long TotalDurationMs);

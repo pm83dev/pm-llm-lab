@@ -110,8 +110,18 @@ export class AppComponent implements OnInit, OnDestroy {
       if (!Array.isArray(parsed)) throw new Error("il JSON deve essere un array di casi");
       return parsed;
     } catch (err) {
-      this.evalError = `JSON non valido: ${this.describeJsonError(err)}`;
-      return null;
+      // Retry leniente: molti autori scrivono regex con escape JSON5 non validi
+      // (\d, \s, \w...) invece della doppia barra \\\\d. Se il secondo tentativo
+      // fallisce, mostro comunque l'errore originale (più preciso).
+      try {
+        const lenient = this.evalJson.replace(/\\(?![\"\\/bfnrtu])/g, '\\\\');
+        const parsed2 = JSON.parse(lenient);
+        if (!Array.isArray(parsed2)) throw new Error("il JSON deve essere un array di casi");
+        return parsed2;
+      } catch {
+        this.evalError = `JSON non valido: ${this.describeJsonError(err)}`;
+        return null;
+      }
     }
   }
 
@@ -219,6 +229,17 @@ export class AppComponent implements OnInit, OnDestroy {
 
   truncate(text: string, max = 300): string {
     return text.length > max ? text.slice(0, max) + '…' : text;
+  }
+
+  // Etichetta leggibile per il tipo di step della timeline eval.
+  stepKindLabel(kind: string): string {
+    switch (kind) {
+      case 'round': return 'Round';
+      case 'toolCall': return 'Tool richiesta';
+      case 'toolResult': return 'Tool risultato';
+      case 'answer': return 'Risposta';
+      default: return kind;
+    }
   }
 
   // ============================================================================

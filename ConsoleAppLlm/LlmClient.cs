@@ -77,11 +77,6 @@ public class OpenAILocalClient : ILLMClient
             ? $"{{\"model\":\"local\",\"messages\":{messagesJson},\"stream\":true,\"tools\":{toolsJson}}}"
             : $"{{\"model\":\"local\",\"messages\":{messagesJson},\"stream\":true}}";
 
-        Console.ForegroundColor = ConsoleColor.DarkBlue;
-        Console.WriteLine("┌─ 🌐 JSON INVIATO ALL'LLM (questo è esattamente ciò che il modello riceve, nient'altro):");
-        Console.WriteLine(PrettyPrintJson(requestBody));
-        Console.ResetColor();
-
         using var request = new HttpRequestMessage(HttpMethod.Post, "")
         {
             Content = new StringContent(requestBody, Encoding.UTF8, "application/json")
@@ -156,54 +151,6 @@ public class OpenAILocalClient : ILLMClient
                     }
                 }
             }
-        }
-    }
-
-    // Solo per il logging didattico: riformatta il JSON grezzo con indentazione leggibile,
-    // troncando le stringhe molto lunghe (es. contenuto di file) per non "affogare" la
-    // struttura request/response sotto un muro di testo. Il payload REALMENTE inviato
-    // all'LLM non viene toccato: qui si tronca solo la copia mostrata a video.
-    private const int MaxDisplayStringLength = 200;
-
-    private static string PrettyPrintJson(string rawJson)
-    {
-        using var doc = JsonDocument.Parse(rawJson);
-        using var stream = new System.IO.MemoryStream();
-        using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
-        {
-            WriteTruncated(writer, doc.RootElement);
-        }
-        return Encoding.UTF8.GetString(stream.ToArray());
-    }
-
-    private static void WriteTruncated(Utf8JsonWriter writer, JsonElement element)
-    {
-        switch (element.ValueKind)
-        {
-            case JsonValueKind.Object:
-                writer.WriteStartObject();
-                foreach (var prop in element.EnumerateObject())
-                {
-                    writer.WritePropertyName(prop.Name);
-                    WriteTruncated(writer, prop.Value);
-                }
-                writer.WriteEndObject();
-                break;
-            case JsonValueKind.Array:
-                writer.WriteStartArray();
-                foreach (var item in element.EnumerateArray())
-                    WriteTruncated(writer, item);
-                writer.WriteEndArray();
-                break;
-            case JsonValueKind.String:
-                var s = element.GetString() ?? "";
-                if (s.Length > MaxDisplayStringLength)
-                    s = s[..MaxDisplayStringLength] + $"…[troncato per la console, {s.Length} caratteri totali inviati davvero]";
-                writer.WriteStringValue(s);
-                break;
-            default:
-                element.WriteTo(writer);
-                break;
         }
     }
 

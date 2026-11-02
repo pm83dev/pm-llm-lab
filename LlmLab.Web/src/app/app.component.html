@@ -171,6 +171,10 @@
       [(ngModel)]="evalJson"
       placeholder='[ { "name": "...", "prompt": "...", "checks": [ { "type": "contains", "value": "..." } ] } ]'
     ></textarea>
+    <p class="eval-hint">
+      Suggerimento: per i check di tipo "regex" usa la doppia barra (es. <code>\\d{{2}}/\\d{{2}}/\\d{{4}}</code>) —
+      oppure quella semplice (<code>\d{{2}}</code>): il parser la corregge automaticamente.
+    </p>
 
     <div class="eval-actions">
       <button (click)="runEval()" [disabled]="evalRunning || compareRunning">
@@ -310,7 +314,15 @@
         <div class="detail-tools" *ngIf="c.toolsCalled.length">
           Tool chiamati: {{ c.toolsCalled.join(', ') }}
         </div>
-        <pre class="detail-answer">{{ c.finalAnswer || '(nessuna risposta)' }}</pre>
+        <ol class="eval-timeline" *ngIf="c.steps && c.steps.length">
+          <li *ngFor="let s of c.steps" class="step-{{ s.kind }}">
+            <span class="step-kind">{{ stepKindLabel(s.kind) }}</span>
+            <span class="step-round" *ngIf="s.round > 0">R{{ s.round }}</span>
+            <span class="step-title">{{ s.title }}</span>
+            <div class="step-detail" *ngIf="s.detail">{{ s.detail }}</div>
+          </li>
+        </ol>
+        <pre class="detail-answer">{{ c.finalAnswer || 'Nessuna risposta' }}</pre>
       </details>
     </div>
   </section>

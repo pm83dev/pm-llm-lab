@@ -35,6 +35,23 @@ app.UseCors(policy => policy
     .AllowAnyMethod());
 
 // ============================================================================
+// SPA: serve il frontend Angular compilato (cartella wwwroot, generata da
+// `dotnet publish` tramite il target PublishWeb nel csproj). Se wwwroot non
+// esiste ancora (es. solo `dotnet run` senza publish), l'applicazione funziona
+// comunque come pura API.
+// ============================================================================
+var webRoot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+if (Directory.Exists(webRoot))
+{
+    app.UseDefaultFiles(); // / -> /index.html
+    app.UseStaticFiles();  // asset statici (js, css, font...)
+
+    // Fallback SPA: ogni GET non-API e non-file esistente torna a index.html,
+    // così il router Angular gestisce i client-side route.
+    app.MapFallbackToFile("index.html");
+}
+
+// ============================================================================
 // POST /api/lab/run  ->  Server-Sent Events
 // Il client invia { prompt } e riceve uno stream di eventi LabEvent in tempo
 // reale: ogni passaggio del flusso (prompt, token, tool call, esecuzione,
