@@ -52,6 +52,28 @@ public class PromptSchema : IPromptSchema
                 }
             }
         });
+        ToolsDef.Add(new {
+            type = "function",
+            @function = new {
+                name = "get_weather",
+                description = "Ottiene il meteo attuale (temperatura, vento, condizioni meteo) " +
+                              "per un luogo usando l'API Open-Meteo gratuita. " +
+                              "Parametro obbligatorio: 'location' (stringa). " +
+                              "Supporta: nomi di città (es. 'Roma'), coordinate GPS (es. '41.9028,12.4964'), " +
+                              "o codice paese (es. 'IT'). " +
+                              "L'API restituisce temperatura in °C e vento in km/h.",
+
+                parameters = new {
+                    type = "object",
+
+                    properties = new {
+                        location = new { type = "string", description = "Città, coordinate GPS, o codice paese per il meteo." }
+                    },
+                    required = new[] { "location" }
+                }
+            }
+
+        });
         ToolsDef.Add(
             new {
                 type = "function",
@@ -127,5 +149,7 @@ public class PromptSchema : IPromptSchema
             }
 
         });
+
+
     }
 }

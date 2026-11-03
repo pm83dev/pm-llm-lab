@@ -24,6 +24,7 @@ public interface ILocalTool
     Task<string> ExecuteAsync(string argumentsJson);
 }
 
+
 // Tool più semplice possibile: nessun argomento, nessuno stato. Utile come "hello world"
 // del function calling prima di introdurre tool con parametri.
 public class GetSystemTimeTool : ILocalTool
@@ -207,5 +208,112 @@ public class ShellCommandTool : ILocalTool
         {
             return $"Errore durante l'esecuzione: {ex.Message}";
         }
+    }
+}
+
+public class GetWeatherTool : ILocalTool {
+    // 1. Nome: deve combaciare esattamente con quello usato nel Dictionary
+       public string Name => "get_weather";
+
+       // 2. Descrizione: deve guidare il modello AI su cosa fare e come chiamare il tool
+       public string Description => "Restituisce il meteo attuale (temperatura, vento, condizioni) " +
+           "per un luogo usando l'API Open-Meteo gratuita. " +
+           "Parametro obbligatorio: 'location' (stringa). " +
+           "Supporta: nomi di città (es. 'Roma'), coordinate GPS (es. '41.9028,12.4964'), " +
+           "o codice paese (es. 'IT'). " +
+           "L'API restituisce temperatura in °C e vento in km/h.";
+        private static readonly HttpClient _http = new();
+
+        // Mappatura stati weather con descrizioni
+        private static string DescribeWeatherCode(int code) => code switch
+        {
+            0  => "Cielo sereno",
+            1  => "Prevalentemente sereno",
+            2  => "Parzialmente nuvoloso",
+            3  => "Coperto",
+            45 or 48 => "Nebbia",
+            >= 51 and <= 57 => "Pioviggine",
+            >= 61 and <= 67 => "Pioggia",
+            >= 71 and <= 77 => "Neve",
+            >= 80 and <= 82 => "Rovesci di pioggia",
+            95 => "Temporale",
+            _  => $"Condizione sconosciuta (codice {code})"
+        };
+    public async Task<string> ExecuteAsync(string argumentsJson)
+    {
+        // --- PASSO 1: PARSING SICURO ---
+        // Il modello potrebbe mandare JSON vuoto, malformato, o senza parametri.
+        // Dobbiamo gestirlo senza crashare.
+        string jsonToParse = string.IsNullOrWhiteSpace(argumentsJson) ? "{}" : argumentsJson;
+
+        // PASSO 2 ESTRAZIONE PARAMETRO LOCATION E VALIDAZIONE
+        // Utilizzo JsonDocument per gestire il parsing sicuro
+        // e verificare la presenza e il tipo corretto del parametro 'location'
+        using var doc = JsonDocument.Parse(jsonToParse);
+        var root = doc.RootElement;
+
+        if (!root.TryGetProperty("location", out var locProp) ||
+            locProp.ValueKind != JsonValueKind.String)
+        {
+            return "Errore: manca il parametro 'location'. Esempio di chiamata valida: {\"location\": \"Roma\"}";
+        }
+
+        var location = locProp.GetString();
+        if (string.IsNullOrWhiteSpace(location))
+            return "Errore: 'location' è vuoto. Indica un nome di città valido.";
+
+        // PASSO 3 RECUPERO COORDINATE GEOGRAFICHE
+        // Utilizzo l'API di Geocodifica di Open-Meteo
+        var geoUrl = $"https://geocoding-api.open-meteo.com/v1/search?name={Uri.EscapeDataString(location)}&count=1&language=it&format=json";
+        string geoJson;
+        try
+        {
+            geoJson = await _http.GetStringAsync(geoUrl);
+        }
+        catch (HttpRequestException)
+        {
+            return "Errore: impossibile contattare il servizio di geocodifica. Riprova più tardi.";
+        }
+
+        using var geoDoc = JsonDocument.Parse(geoJson);
+        if (!geoDoc.RootElement.TryGetProperty("results", out var results) ||
+            results.GetArrayLength() == 0)
+        {
+            return $"Città '{location}' non trovata. Prova con un nome più completo (es. 'Roma' invece di 'RM').";
+        }
+
+        var lat = results[0].GetProperty("latitude").GetDouble();
+        var lon = results[0].GetProperty("longitude").GetDouble();
+        var displayName = results[0].GetProperty("name").GetString() ?? location;
+
+        // PASSO 4 CHIAMATA API METEO
+        // Utilizzo l'API di Meteo di Open-Meteo per ottenere i dati meteorologici
+        // Nota: l'API Open-Meteo è limitata in numero di richieste al giorno.
+        // Utilizzo la versione corrente di Open-Meteo (v1) per ottenere i dati attuali.
+        var weatherUrl = $"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true";
+        string weatherJson;
+        try
+        {
+            weatherJson = await _http.GetStringAsync(weatherUrl);
+        }
+        catch (HttpRequestException)
+        {
+            return "Errore: impossibile ottenere i dati meteorologici. Riprova più tardi.";
+        }
+
+        //PASSO 5 PARSE RISPOSTA METEO
+        using var weatherDoc = JsonDocument.Parse(weatherJson);
+        var cw = weatherDoc.RootElement.GetProperty("current_weather");
+
+        var temp  = cw.GetProperty("temperature").GetDouble();
+        var wind  = cw.GetProperty("windspeed").GetDouble();
+        var code  = cw.GetProperty("weathercode").GetInt32();
+        var cond = DescribeWeatherCode(code);
+
+        //PASSO 7 RESTITUISCO STRINGA LEGGIBILE
+        return $"Meteo a {displayName}:\n" +
+               $"  Temperatura: {temp:F1} °C\n" +
+               $"  Vento: {wind:F1} km/h\n" +
+               $"  Condizione: {cond}";
     }
 }

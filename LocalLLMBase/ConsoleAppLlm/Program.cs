@@ -26,6 +26,7 @@ services.AddSingleton<IPromptSchema, PromptSchema>();
 // Ogni ILocalTool registrato qui viene raccolto da AgentOrchestrator (via
 // IEnumerable<ILocalTool>) E deve avere una voce corrispondente in toolsDef sotto:
 // le due liste sono tenute manualmente in sincrono, non generate l'una dall'altra.
+services.AddSingleton<ILocalTool, GetWeatherTool>();
 services.AddSingleton<ILocalTool, GetSystemTimeTool>();
 services.AddSingleton<ILocalTool, ReadFileTool>();
 services.AddSingleton<ILocalTool, WriteFileTool>();
@@ -39,11 +40,11 @@ services.AddSingleton<ILocalTool, ShellCommandTool>();
 // 5. Viene creato un nuovo AgentOrchestrator con i parametri ottenuti.
 services.AddSingleton<AgentOrchestrator>(sp =>
 {
-    var client = sp.GetRequiredService<ILLMClient>();
-    var tools = sp.GetServices<ILocalTool>().ToList();
-    var systemPrompt = sp.GetService<IPromptSchema>()?.SystemPrompt ?? "You are an AI assistant.";
-    var toolsDef = sp.GetService<IPromptSchema>()?.ToolsDef;
-    Console.WriteLine($"SystemPrompt: {systemPrompt}");
+var client = sp.GetRequiredService<ILLMClient>();
+var tools = sp.GetServices<ILocalTool>().ToList();
+var systemPrompt = sp.GetService<IPromptSchema>()?.SystemPrompt ?? "You are an AI assistant.";
+var toolsDef = sp.GetService<IPromptSchema>()?.ToolsDef ?? new List<Object>();
+Console.WriteLine($"SystemPrompt: {systemPrompt}");
     Console.WriteLine($"ToolsDef: {toolsDef}");
     Console.WriteLine($"Tools: {string.Join(", ", tools.Select(t => t.Name))}");
     Console.WriteLine("Initializing AgentOrchestrator...");
